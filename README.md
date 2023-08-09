@@ -2,7 +2,7 @@
 
 ### introduce
 
-ScreenCatcher is a screen capture tool.  
+A simple screen capturing software that can capture the screen and export as PDF via shortcuts  
 
 ![Preview](https://gitee.com/noob-0/ScreenCatcher/raw/master/Preview.png)
 
