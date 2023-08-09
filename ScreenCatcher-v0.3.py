@@ -534,7 +534,6 @@ class SettingsDialog(QDialog):
         layout.addLayout(apply_cancel_layout)
 
         self.setLayout(layout)
-        output(parent)
         self.setWindowModality(Qt.ApplicationModal)
         self.show()
         self.exec_()
@@ -728,7 +727,7 @@ if __name__ == '__main__':
         import qt_material
 
         main = Main()
-        main.main_ui.set_stay_ont_the_top(value=True)
+        main.main_ui.set_stay_ont_the_top(value=True, show=True)
         output(intro, print_time=False)
         output(user_help.format(main=main), print_time=False)
         qt_material.apply_stylesheet(app=app, theme="dark_lightgreen.xml")
