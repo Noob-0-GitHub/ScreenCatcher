@@ -2,7 +2,9 @@
 
 ### 介绍
 
-ScreenCatcher
+一个简单的屏幕捕捉软件，可以通过快捷键捕捉屏幕并导出为PDF
+
+![Preview](https://gitee.com/noob-0/ScreenCatcher/raw/master/Preview.png)
 
 ### 安装教程
 
