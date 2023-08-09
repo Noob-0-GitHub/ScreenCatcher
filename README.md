@@ -2,7 +2,9 @@
 
 ### introduce
 
-ScreenCatcher is a screen capture tool.
+ScreenCatcher is a screen capture tool.  
+
+![Preview](https://gitee.com/noob-0/ScreenCatcher/raw/master/Preview.png)
 
 ### Setup
 
