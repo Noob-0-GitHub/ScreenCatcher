@@ -7,7 +7,7 @@ I developed ScreenCatcher to provide an efficient and silent screenshotting solu
 I wanted to create a tool that is straightforward to use, with a focus on seamless capturing and saving.
 The app is powered by Python and PyQt, enabling cross-platform development.
 
-![Preview](https://gitee.com/noob-0/ScreenCatcher/raw/master/Preview.png)
+![Preview](https://raw.githubusercontent.com/Noob-0-GitHub/ScreenCatcher/master/Preview.png)
 
 ### Some key features ScreenCatcher has implemented:
 
