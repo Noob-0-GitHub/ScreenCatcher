@@ -731,7 +731,7 @@ if __name__ == '__main__':
         main.main_ui.set_stay_ont_the_top(value=True)
         output(intro, print_time=False)
         output(user_help.format(main=main), print_time=False)
-        # qt_material.apply_stylesheet(app=app, theme="dark_lightgreen.xml")
+        qt_material.apply_stylesheet(app=app, theme="dark_lightgreen.xml")
         main.main_ui.set_stay_ont_the_top(value=False, show=True)
         sys.exit(app.exec_())
     except Exception:
