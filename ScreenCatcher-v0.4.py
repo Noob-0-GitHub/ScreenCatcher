@@ -6,19 +6,30 @@ import threading
 import time
 import traceback
 from datetime import datetime
-from typing import Callable
+from typing import Callable, Any
 
-import PyQt5.QtGui
 import keyboard
 import pyautogui
-from PyQt5.QtWidgets import QApplication, QFileDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, \
-    QTextEdit, QMessageBox, QWidget, QLabel, QDialog, QKeySequenceEdit
+from PIL import Image
+from PyQt5 import Qt as pyqt5Qt
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QKeySequence
+from PyQt5.QtWidgets import QApplication, QDialog, QFileDialog, QHBoxLayout, QKeySequenceEdit, QLabel, QLineEdit, \
+    QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget, QDesktopWidget
 from fpdf import FPDF
 
-CURRENT_PATH = os.path.abspath(__file__)
 DATA_PATH = r'C:\ProgramData\ScreenCatcher'
 version = 'v0.3'
 intro = f"Welcome to use ScreenCatcher {version}\n欢迎使用ScreenCatcher {version}"
+user_help = "Press \"{main.shortcuts_keys[0]}\" to Screenshot\nPress \"ESC\" to stop catching"
+
+
+def get_attr(_obj: object, attr_name: str) -> Any:
+    return eval(f"{attr_name}", _obj.__dict__)
+
+
+def set_attr(_obj: object, attr_name: str, value: Any) -> Any:
+    return exec(f"_obj.{attr_name}=value", {"_obj": _obj, "value": value})
 
 
 # wrapper class  装饰器类
@@ -72,10 +83,12 @@ class Threaded:
 
 
 class PushButton(QPushButton):
-    def __init__(self, text: str, parent, *args, add_space=True, **kwargs):
+    def __init__(self, text: str, parent, *args, add_space=True, tooltips=True, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.add_space = add_space
         self.setText(text)
+        if tooltips:
+            self.setToolTip(text)
 
     def setText(self, text: str) -> None:
         if self.add_space:
@@ -94,6 +107,7 @@ class Main:
         self.shortcuts_keys = ['v']
         self.shortcuts_callbacks = [self.screenshot_active_window]
         self.stop_shortcut = "Esc"
+        self.pdf_to_clipboard = True
         self.save_pdf_dir_path = None
         self.pdf_save_name = None
         self.pdf_save_path = None
@@ -111,9 +125,6 @@ class Main:
         self.pdf_save_path = None
         self.key_listener_thread = None
         self.stop_listener_Thread = None
-
-    def load_setting(self, setting=None):
-        pass
 
     @staticmethod
     def current_time_str(year=True, month=True, day=True, hour=True, minute=True, second=True, microsecond=True) -> str:
@@ -179,14 +190,19 @@ class Main:
     def save_img_as_pdf(self, img_dir_path: str, pdf_save_path: str = None):
         if pdf_save_path is None:
             pdf_save_path: str = os.path.join(img_dir_path, "%s.pdf" % self.current_time_str())
-        pdf = FPDF()
+        pdf = FPDF(unit="pt")
         pdf.set_auto_page_break(False)  # 自动分页设为False
         image_list = list(os.listdir(img_dir_path))
-        for image in image_list:
-            if not image.endswith(".png"):
+        for img in image_list:
+            if not img.endswith(".png"):
                 continue
-            pdf.add_page()
-            pdf.image(os.path.join(img_dir_path, image), w=190)  # 指定宽高
+            try:
+                img_path = os.path.join(img_dir_path, img)
+                width, height = Image.open(img_path).size
+                pdf.add_page(format=(width, height))
+                pdf.image(img_path, x=0, y=0, w=width, h=height)  # 指定宽高
+            except Exception:
+                output(traceback.format_exc())
         pdf.output(pdf_save_path)
 
     @Threaded
@@ -263,7 +279,13 @@ class Main:
         self.catching_state = False
         self.key_listener_thread.thread.join(15)
         output('Stop catching')
-        self.save_pdf()
+        if self.has_img_with_extension(".png"):
+            self.save_pdf()
+            if self.pdf_to_clipboard:
+                self.copy_file_to_clipboard()
+        else:
+            output(f"Saving: No img file found in \"{self.save_img_dir_path}\"")
+            output("No PDF saved")
         self.main_init()
         self.main_ui.update_path_line()
         return True
@@ -274,14 +296,22 @@ class Main:
         if pdf_save_path is None:
             pdf_save_path = self.pdf_save_path
         original_pdf_save_path = os.path.join(self.save_img_dir_path, self.current_time_str() + ".pdf")
-        if self.has_img_with_extension(".png"):
-            self.save_img_as_pdf(img_dir_path=img_dir_path, pdf_save_path=original_pdf_save_path)
-            output(f"PDF\"{original_pdf_save_path}\" saved")
-            shutil.copy(original_pdf_save_path, pdf_save_path)
-            output(f"PDF\"{pdf_save_path}\" saved")
-        else:
-            output(f"Saving: No img file found in \"{img_dir_path}\"")
-            output("No PDF saved")
+        self.save_img_as_pdf(img_dir_path=img_dir_path, pdf_save_path=original_pdf_save_path)
+        output(f"PDF\"{original_pdf_save_path}\" saved")
+        shutil.copy(original_pdf_save_path, pdf_save_path)
+        output(f"PDF\"{pdf_save_path}\" saved")
+
+    def copy_file_to_clipboard(self, file_path: str = None):
+        if file_path is None:
+            file_path = self.pdf_save_path
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"\"{file_path}\" no found")
+        clipboard = QApplication.clipboard()
+        url_list = [pyqt5Qt.QUrl.fromLocalFile(file_path)]
+        mime_data = pyqt5Qt.QMimeData()
+        mime_data.setUrls(url_list)
+        clipboard.setMimeData(mime_data)
+        output(f"PDF\"{file_path}\" copy to clipboard")
 
     def output(self, _str, print_time=True, precis_time=False) -> bool:
         if print_time:
@@ -309,40 +339,40 @@ class Main:
 #         pass
 
 
-class KeyRecorder(QWidget):
-    class KeySequenceEdit(QKeySequenceEdit):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            # Cache the QLineEdit child object for later use
-            self.line_edit_child = self.line_edit_child = self.findChild(QLineEdit, "qt_keysequenceedit_lineedit")
+class KeySequenceEdit(QKeySequenceEdit):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Cache the QLineEdit child object for later use
+        self.line_edit_child = self.findChild(QLineEdit, "qt_keysequenceedit_lineedit")
 
-        def keyPressEvent(self, event):
-            try:
-                super().keyPressEvent(event)
-                # noinspection PyUnresolvedReferences
-                seq_string = self.keySequence().toString(PyQt5.QtGui.QKeySequence.NativeText)
-                if seq_string:
-                    last_seq = seq_string.split(",")[-1].strip()
-                    self.line_edit_child = self.findChild(QLineEdit, "qt_keysequenceedit_lineedit")
-                    self.setKeySequence(PyQt5.QtGui.QKeySequence(last_seq))
-                    # Update the cached QLineEdit child object if it's available
-                    if self.line_edit_child:
-                        # noinspection PyUnresolvedReferences
-                        self.line_edit_child.setText(last_seq)
-
+    def keyPressEvent(self, event):
+        try:
+            super().keyPressEvent(event)
+            # noinspection PyUnresolvedReferences
+            seq_string = self.keySequence().toString(QKeySequence.NativeText)
+            if seq_string:
+                last_seq = seq_string.split(",")[-1].strip()
+                self.setKeySequence(QKeySequence(last_seq))
+                # Update the cached QLineEdit child object if it's available
+                if self.line_edit_child:
                     # noinspection PyUnresolvedReferences
-                    # Emit editingFinished signal
-                    self.editingFinished.emit()
-            except Exception:
-                output(traceback.format_exc())
+                    self.line_edit_child.setText(last_seq)
 
+                # noinspection PyUnresolvedReferences
+                # Emit editingFinished signal
+                self.editingFinished.emit()
+        except Exception:
+            output(traceback.format_exc())
+
+
+class KeyRecorder(QWidget):
     def __init__(self, parent, default_key=None):
         # parent = None
         super().__init__()
         self.parent = parent
         self.default_key = default_key
         # noinspection PyArgumentList
-        self.keysequenceedit = self.KeySequenceEdit(self, editingFinished=self.on_editingFinished)
+        self.keysequenceedit = KeySequenceEdit(self)
         # noinspection PyArgumentList
         button = QPushButton("Reset", self.parent, clicked=self.reset)
         layout = QHBoxLayout(self)
@@ -354,39 +384,60 @@ class KeyRecorder(QWidget):
     def reset(self):
         self.keysequenceedit.setKeySequence(self.default_key)
 
-    def on_editingFinished(self):
-        pass
-
+    # noinspection PyUnresolvedReferences
     def get_shortcut(self) -> str:
         sequence = self.keysequenceedit.keySequence()
-        seq_string = sequence.toString(PyQt5.QtGui.QKeySequence.NativeText)
+        seq_string = sequence.toString(QKeySequence.NativeText)
         return seq_string
 
 
 class SettingsContainer(dict):
-    class SettingPair:
-        def __init__(self, key, value):
-            self.key = key
-            self.value = value
+    class SettingPair(list):
+        def __init__(self, key, value, value_get_callback: Callable = None):
+            super().__init__([key, value])
+            self._key_index = 0
+            self._value_index = 1
+            self.value_get_callback = value_get_callback
 
-    def add(self, key: str, value, note: str):
+        @property
+        def key(self):
+            return self.__getitem__(self._key_index)
+
+        @property
+        def value(self):
+            return self.__getitem__(self._value_index)
+
+        def set_value(self, _new_value):
+            self.__setitem__(self._value_index, _new_value)
+
+    def __init__(self, *args, _dict: dict = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if _dict is not None:
+            _dict = _dict.copy()
+            for note in _dict:
+                _dict[note] = self.SettingPair(_dict[note][0], _dict[note][1])
+            self.update(_dict)
+
+    def add(self, note: str, key: str, value=None):
         self[note] = self.SettingPair(key=key, value=value)
 
-    # def __setattr__(self, key, value):
-    #     super().__setattr__(key, value)
-    #     # self.update({k: v for k, v in self.__dict__.items() if (not k.startswith("_")) and (not callable(v))})
-    #     self.__setitem__(key, value)
+    def get(self, __key: str) -> SettingPair | None:
+        return super().get(__key)
+
+    def deepcopy(self):
+        _new = self.__class__(_dict=self)
+        return _new
 
 
 class SettingsManager:
-    SETTINGS_PATH = os.path.join(DATA_PATH, 'Settings.json')
+    SETTINGS_PATH = os.path.join(DATA_PATH, f"ScreenCatcher-{version}-Settings.json")
 
     def __init__(self, parent, main_instance: Main, load_settings=True):
         self.parent: ScreenCatcherGUI = parent
         self.main_instance = main_instance
 
-        self.settings: SettingsContainer[SettingsContainer.SettingPair, str] = SettingsContainer()  # 类似 模版/超类 的作用
-        self.settings.add('shortcuts_keys[0]', None, 'Screenshot Shortcut')
+        self.settings: SettingsContainer[str, SettingsContainer.SettingPair] = SettingsContainer()
+        self.settings.add(note='Screenshot Shortcut', key='shortcuts_keys[0]')
 
         if load_settings:
             self.load_settings()
@@ -394,32 +445,53 @@ class SettingsManager:
     def settings_filter(self, main_instance: Main = None) -> SettingsContainer:
         if main_instance is None:
             main_instance = self.main_instance
-        self.settings.update({k: eval(f"main.{v.key}", {"main": main_instance})
-                              for k, v in self.settings.items()})
+        for note in self.settings:
+            setting_pair = self.settings.get(note)
+            setting_pair.set_value(get_attr(main_instance, setting_pair.key))
         print(self.settings)
         return self.settings
 
-    def load_settings(self, defaults_settings: dict = None, settings_path: str = None):
+    def load_settings(self, defaults_settings: dict = None, settings_path: str = None, main_instance: Main = None):
         """Load settings from file. If file doesn't exist, return default settings."""
         if settings_path is None:
             settings_path = self.SETTINGS_PATH
+        if main_instance is None:
+            main_instance = self.main_instance
         if os.path.exists(settings_path):
-            with open(settings_path, 'r') as file:
-                self.settings.update(json.load(file))
+            try:
+                with open(settings_path, 'r') as file:
+                    file_settings: dict = json.load(file)
+                    if set(self.settings.keys()) == set(file_settings.keys()):
+                        file_settings = SettingsContainer(_dict=file_settings)
+                        self.settings.update(file_settings)
+                    else:
+                        self.register_settings(defaults_settings)
+            except Exception:
+                output(traceback.format_exc())
+                self.register_settings()
         else:
-            if defaults_settings is None:
-                defaults_settings = self.settings_filter()
-            self.save_settings(defaults_settings)
-            self.settings.update(defaults_settings)
-        self.main_instance.__dict__.update(self.settings)
+            self.register_settings(defaults_settings)
+        for note in self.settings:
+            setting_pair = self.settings.get(note)
+            set_attr(_obj=main_instance, attr_name=setting_pair.key, value=setting_pair.value)
 
     def save_settings(self, settings, settings_path: str = None):
         """Save settings to file."""
         if settings_path is None:
             settings_path = self.SETTINGS_PATH
         os.makedirs(DATA_PATH, exist_ok=True)  # Ensure directory exists
-        with open(settings_path, 'w') as file:
-            json.dump(settings, file)
+        try:
+            with open(settings_path, 'w') as file:
+                json.dump(settings, file)
+        except Exception:
+            output(traceback.format_exc())
+            self.register_settings()
+
+    def register_settings(self, defaults_settings: SettingsContainer = None):
+        if defaults_settings is None:
+            defaults_settings = self.settings_filter()
+        self.save_settings(defaults_settings)
+        self.settings.update(defaults_settings)
 
     def setting_dialog(self):
         return SettingsDialog(self.parent, self, self.settings)
@@ -432,13 +504,16 @@ class SettingsDialog(QDialog):
         self.parent: ScreenCatcherGUI = parent
         self.setting_manager = setting_manager
         self.current_settings = current_settings
+        self.new_settings = current_settings.deepcopy()
         self.setWindowTitle("Screen Catcher Settings")
         layout = QVBoxLayout()
 
         # ScreenshotShortcut setting
         screenshot_shortcut_layout = QHBoxLayout()
         screenshot_shortcut_layout.addWidget(QLabel("Screenshot Shortcut: "))
-        self.screenshot_shortcut_keyrecorder = KeyRecorder(self, self.current_settings["Screenshot Shortcut"])
+        self.screenshot_shortcut_keyrecorder = KeyRecorder(self, self.current_settings.get("Screenshot Shortcut").value)
+        self.new_settings.get("Screenshot Shortcut").value_get_callback = (
+            self.screenshot_shortcut_keyrecorder.get_shortcut)
         screenshot_shortcut_layout.addWidget(self.screenshot_shortcut_keyrecorder)
         layout.addLayout(screenshot_shortcut_layout)
 
@@ -461,14 +536,17 @@ class SettingsDialog(QDialog):
         layout.addLayout(apply_cancel_layout)
 
         self.setLayout(layout)
+        self.setWindowModality(Qt.ApplicationModal)
         self.show()
+        self.exec_()
 
     def apply_settings(self):
-        new_settings = self.current_settings
-        new_settings.update({
-            "shortcuts_keys[0]": self.screenshot_shortcut_keyrecorder.get_shortcut(),
-        })
-        self.setting_manager.save_settings(new_settings)
+        for note in self.new_settings:
+            setting_pair = self.new_settings.get(note)
+            value_callback = setting_pair.value_get_callback
+            if callable(value_callback):
+                setting_pair.set_value(value_callback())
+        self.setting_manager.save_settings(self.new_settings)
         self.setting_manager.load_settings()
         self.accept()  # Close the dialog
 
@@ -536,6 +614,9 @@ class ScreenCatcherGUI(QWidget):
         self.setLayout(layout)
         self.setWindowTitle(f'ScreenCatcher-{version}')
         self.resize(self.window_width, self.window_height)
+        self.setFocus()
+        self.center()
+
         # self.setWindowOpacity(0.96)
 
         # Blur background
@@ -545,6 +626,26 @@ class ScreenCatcherGUI(QWidget):
         # self.output_lines.setAttribute(Qt.WA_TranslucentBackground)
         # GlobalBlur(self.winId(), Acrylic=False, Dark=True, QWidget=self)
         # self.setStyleSheet("background-color: rgba(0, 0, 0, 128)")
+
+    def set_stay_ont_the_top(self, value=True, show=False):
+        if value:
+            self.setWindowFlags(Qt.WindowStaysOnTopHint)  # 置顶
+        else:
+            self.setWindowFlags(Qt.Widget)  # 取消置顶
+        if show:
+            self.show()
+
+    def center(self):
+        # 得到屏幕的尺寸
+        screen = QDesktopWidget().screenGeometry()
+        # 获取窗口尺寸
+        size = self.geometry()
+        # 计算居中窗口的左上角到屏幕左侧坐标的距离
+        new_left = (screen.width() - size.width()) // 2
+        # 计算居中窗口的左上角到屏幕上边坐标的距离
+        new_top = (screen.height() - size.height()) // 2
+        # 移动窗口, 因为move方法只接受整数，所以我们类型转换一下
+        self.move(new_left, new_top)
 
     def update_path_line(self):
         self.path_line.setText(self.parent.pdf_save_path)
@@ -566,18 +667,22 @@ class ScreenCatcherGUI(QWidget):
             output(f"Path\"{self.path_line.text()}\" no found")
             self.select_path()
 
+    def update_start_stop_button(self):
+        self.update_start_stop_button_state()
+        if self.start_stop_button_state is False:
+            self.start_stop_button.setText("Start")
+            self.start_stop_button.setChecked(self.start_stop_button_state)
+        else:
+            self.start_stop_button.setText('Stop And Save')
+            self.start_stop_button.setChecked(self.start_stop_button_state)
+        self.start_stop_button.setToolTip(self.start_stop_button.text())
+
     def toggle_start_stop_button(self):
         if not self.start_stop_button.isChecked():
-            if self.parent.catching_stop():
-                self.start_stop_button.setText('Start')
-            else:
-                self.start_stop_button.setChecked(not self.start_stop_button.isChecked())
+            self.parent.catching_stop()
         else:
-            if self.parent.catching_start():
-                self.start_stop_button.setText('Stop And Save')
-            else:
-                self.start_stop_button.setChecked(not self.start_stop_button.isChecked())
-        self.update_start_stop_button_state()
+            self.parent.catching_start()
+        self.update_start_stop_button()
 
     def open_settings(self):
         if self.parent.catching_state:
@@ -609,23 +714,29 @@ class ScreenCatcherGUI(QWidget):
 
 
 def output(_str, print_time=True, precis_time=False):
+    while len(output_list):
+        main.output(output_list.pop())
     print(_str)
     try:
         main.output(_str, print_time=print_time, precis_time=precis_time)
     except Exception:
         print(traceback.format_exc())
+        output_list.append(_str)
 
 
 if __name__ == '__main__':
     try:
+        output_list = list()
         app = QApplication(sys.argv)
 
         import qt_material
 
-        qt_material.apply_stylesheet(app=app, theme="dark_lightgreen.xml")
         main = Main()
+        main.main_ui.set_stay_ont_the_top(value=True, show=True)
         output(intro, print_time=False)
-        output(CURRENT_PATH)
+        output(user_help.format(main=main), print_time=False)
+        qt_material.apply_stylesheet(app=app, theme="dark_lightgreen.xml")
+        main.main_ui.set_stay_ont_the_top(value=False, show=True)
         sys.exit(app.exec_())
     except Exception:
         output(traceback.format_exc())

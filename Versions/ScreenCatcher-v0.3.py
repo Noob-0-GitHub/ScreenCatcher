@@ -10,7 +10,7 @@ from typing import Callable, Any
 
 import keyboard
 import pyautogui
-from PyQt5 import Qt as pyqt5qt
+from PyQt5 import Qt as pyqt5Qt
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QApplication, QDialog, QFileDialog, QHBoxLayout, QKeySequenceEdit, QLabel, QLineEdit, \
@@ -305,8 +305,8 @@ class Main:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"\"{file_path}\" no found")
         clipboard = QApplication.clipboard()
-        url_list = [pyqt5qt.QUrl.fromLocalFile(file_path)]
-        mime_data = pyqt5qt.QMimeData()
+        url_list = [pyqt5Qt.QUrl.fromLocalFile(file_path)]
+        mime_data = pyqt5Qt.QMimeData()
         mime_data.setUrls(url_list)
         clipboard.setMimeData(mime_data)
         output(f"PDF\"{file_path}\" copy to clipboard")
@@ -534,7 +534,6 @@ class SettingsDialog(QDialog):
         layout.addLayout(apply_cancel_layout)
 
         self.setLayout(layout)
-        output(parent)
         self.setWindowModality(Qt.ApplicationModal)
         self.show()
         self.exec_()
@@ -613,7 +612,6 @@ class ScreenCatcherGUI(QWidget):
         self.setLayout(layout)
         self.setWindowTitle(f'ScreenCatcher-{version}')
         self.resize(self.window_width, self.window_height)
-        self.sub_widget: QWidget | None = None
         self.setFocus()
         self.center()
 
@@ -627,11 +625,13 @@ class ScreenCatcherGUI(QWidget):
         # GlobalBlur(self.winId(), Acrylic=False, Dark=True, QWidget=self)
         # self.setStyleSheet("background-color: rgba(0, 0, 0, 128)")
 
-    def set_stay_ont_the_top(self, value=True):
+    def set_stay_ont_the_top(self, value=True, show=False):
         if value:
             self.setWindowFlags(Qt.WindowStaysOnTopHint)  # 置顶
         else:
             self.setWindowFlags(Qt.Widget)  # 取消置顶
+        if show:
+            self.show()
 
     def center(self):
         # 得到屏幕的尺寸
@@ -644,16 +644,6 @@ class ScreenCatcherGUI(QWidget):
         new_top = (screen.height() - size.height()) // 2
         # 移动窗口, 因为move方法只接受整数，所以我们类型转换一下
         self.move(new_left, new_top)
-
-    def focusInEvent(self, *_) -> None:
-        if self.sub_widget is not None:
-            self.sub_widget.setFocus()
-
-    def sub_widget_set(self, widget: QWidget):
-        self.sub_widget = widget
-
-    def sub_widget_clear(self):
-        self.sub_widget = None
 
     def update_path_line(self):
         self.path_line.setText(self.parent.pdf_save_path)
@@ -737,9 +727,11 @@ if __name__ == '__main__':
         import qt_material
 
         main = Main()
+        main.main_ui.set_stay_ont_the_top(value=True, show=True)
         output(intro, print_time=False)
         output(user_help.format(main=main), print_time=False)
         qt_material.apply_stylesheet(app=app, theme="dark_lightgreen.xml")
+        main.main_ui.set_stay_ont_the_top(value=False, show=True)
         sys.exit(app.exec_())
     except Exception:
         output(traceback.format_exc())
